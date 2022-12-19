@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::time::Instant;
 use aoc_2019_rust::read_input;
 
@@ -30,7 +31,10 @@ fn part1() {
 
 fn part2() {
     let input = read_input("inputs/day6.txt");
-
+    let orbits = get_orbits(input.as_str());
+    let index = build_index(&orbits);
+    let transfers = index.orbit_transfers("YOU", "SAN");
+    println!("{transfers}");
 }
 
 fn get_orbits(input: &str) -> Vec<(&str, &str)> {
@@ -85,11 +89,14 @@ impl Index {
         inserted_id
     }
 
-    fn find_or_insert(&mut self, name: &str, parent_idx: usize) -> usize {
+    fn find_or_insert(&mut self, name: &str, parent_idx: Option<usize>) -> usize {
         if let Some(idx) = self.index_of(name) {
+            if let Some(parent_idx) = parent_idx {
+                self.add_parent(idx, parent_idx)
+            }
             idx
         } else {
-            self.insert(name)
+            self.insert(name, parent_idx)
         }
     }
 
@@ -104,6 +111,11 @@ impl Index {
     fn add_child(&mut self, parent: usize, child: usize) {
         let node: &mut Node = self.items.get_mut(parent).unwrap();
         node.children.push(child);
+    }
+
+    fn add_parent(&mut self, idx: usize, parent_idx: usize) {
+        let node: &mut Node = self.items.get_mut(idx).unwrap();
+        node.parent = Some(parent_idx);
     }
 
     fn traverse_set_depth(&mut self, node_id: usize, depth: usize) {
@@ -121,6 +133,39 @@ impl Index {
     fn calc_total_depth(&self) -> usize {
         let depth: usize = self.items.iter().map(|node| node.depth).sum();
         depth
+    }
+
+    fn orbit_transfers(&self, a: &str, b: &str) -> usize {
+        let idx_a = self.index_of(a).expect("Expected node to be present in index");
+        let idx_b = self.index_of(b).expect("Expected node to be present in index");
+        self.orbit_transfers_index(idx_a, idx_b)
+    }
+
+    fn orbit_transfers_index(&self, idx_a: usize, idx_b: usize) -> usize {
+        let path_a: Vec<usize> = self.root_path(idx_a);
+        let path_b: Vec<usize> = self.root_path(idx_b);
+        let max_depth = min(path_a.len(), path_b.len());
+
+        let mut common_depth = 0;
+        while (path_a.get(common_depth).unwrap() == path_b.get(common_depth).unwrap())
+            && (common_depth <= max_depth) {
+            common_depth += 1;
+        }
+
+        path_a.len() + path_b.len() - (2 * common_depth)
+    }
+
+    fn root_path(&self, idx: usize) -> Vec<usize> {
+        let mut path = vec![];
+        let node: &Node = self.items.get(idx).unwrap();
+        let mut parent_idx = node.parent;
+        while let Some(idx) = parent_idx {
+            path.push(idx);
+            let parent_node = self.items.get(idx).unwrap();
+            parent_idx = parent_node.parent;
+        }
+        path.reverse();
+        path
     }
 }
 
@@ -140,13 +185,22 @@ mod tests {
     }
 
     #[test]
+    fn test_root_path() {
+        let input = "COM)B\nB)C\nC)D\nD)E\nE)F\nB)G\nG)H\nD)I\nE)J\nJ)K\nK)L\nK)YOU\nI)SAN";
+        let orbits = get_orbits(input);
+        let index = build_index(&orbits);
+        let idx = index.index_of("YOU").expect("Expected node YOU to be present");
+        let path = index.root_path(idx);
+        assert_eq!(path.len(), 7);
+        assert_eq!(path, vec![0, 1, 2, 3, 4, 9, 10]);
+    }
+
+    #[test]
     fn test_orbit_transfers() {
         let input = "COM)B\nB)C\nC)D\nD)E\nE)F\nB)G\nG)H\nD)I\nE)J\nJ)K\nK)L\nK)YOU\nI)SAN";
         let orbits = get_orbits(input);
-        let mut index = build_index(&orbits);
-        // let com_idx = index.index_of("YOU").expect("Expected COM to be in the index");
-        // index.traverse_set_depth(com_idx, 0);
-        // let total = index.calc_total_depth();
+        let index = build_index(&orbits);
+        let transfers = index.orbit_transfers("YOU", "SAN");
         assert_eq!(transfers, 4);
     }
 }
