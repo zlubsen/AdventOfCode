@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Instant;
 use aoc_2019_rust::intcode::Automaton;
 use aoc_2019_rust::read_input;
@@ -22,27 +21,17 @@ fn main() {
 fn part1() {
     let input = read_input("inputs/day5.txt");
 
-    let mut automaton = Automaton {
-        instruction_set: HashMap::new(),
-        pc: 0,
-        finished: false,
-        memory: vec![],
-        input: 0,
-        last_output: 0,
-    };
-    automaton.init().load(input.as_str()).set_input(1).run();
+    let mut automaton = Automaton::new().init().load(input.as_str()).add_initial_input(1);
+    automaton.run();
+    let output = automaton.get_last_output();
+    println!("{output}");
 }
 
 fn part2() {
     let input = read_input("inputs/day5.txt");
 
-    let mut automaton = Automaton {
-        instruction_set: HashMap::new(),
-        pc: 0,
-        finished: false,
-        memory: vec![],
-        input: 0,
-        last_output: 0,
-    };
-    automaton.init().load(input.as_str()).set_input(5).run();
+    let mut automaton = Automaton::new().init().load(input.as_str()).add_initial_input(5);
+    automaton.run();
+    let output = automaton.get_last_output();
+    println!("{output}");
 }

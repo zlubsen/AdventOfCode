@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
+#[allow(dead_code)]
 pub struct InstructionDef {
     opcode : i8,
     no_params : i8,
@@ -26,15 +27,27 @@ pub enum ParameterMode {
 pub struct Automaton {
     pub instruction_set : HashMap<i8, InstructionDef>,
     pub pc : usize,
-    pub finished : bool,
+    pub halted: bool,
+    pub blocked : bool,
     pub memory : Vec<i32>,
-    pub input : i32,
+    pub input : VecDeque<i32>,
     pub last_output : i32,
 }
 
 impl Automaton {
+    pub fn new() -> Self {
+        Self {
+            instruction_set: HashMap::new(),
+            pc: 0,
+            halted: false,
+            blocked: false,
+            memory: vec![],
+            input: VecDeque::new(),
+            last_output: 0,
+        }
+    }
 
-    pub fn init(&mut self) -> &mut Self {
+    pub fn init(mut self) -> Self {
         self.instruction_set.insert(1, InstructionDef {opcode : 1, no_params : 3});
         self.instruction_set.insert(2, InstructionDef {opcode : 2, no_params : 3});
         self.instruction_set.insert(3, InstructionDef {opcode : 3, no_params : 1});
@@ -47,12 +60,14 @@ impl Automaton {
 
         self.instruction_set.insert(99, InstructionDef {opcode : 99, no_params : 0});
 
+        self.input.clear();
+
         self
     }
 
-    pub fn load(&mut self, input : &str) -> &mut Self {
+    pub fn load(mut self, input : &str) -> Self {
         self.pc = 0;
-        self.finished = false;
+        self.halted = false;
         self.memory = input.split(",").filter_map(|w| w.parse().ok()).collect();
 
         self
@@ -111,13 +126,11 @@ impl Automaton {
         }
     }
 
-    pub fn run(&mut self) -> &mut Self {
-        while !self.finished {
+    pub fn run(&mut self) {
+        while !self.halted && !self.blocked {
             let instruction = self.decode().unwrap();
             self.do_operation(&instruction);
         }
-
-        self
     }
 
     pub fn dump_memory(&self) -> &Vec<i32> {
@@ -128,14 +141,23 @@ impl Automaton {
         self.last_output
     }
 
-    pub fn set_input(&mut self, input : i32) -> &mut Self {
-        self.input = input;
+    pub fn add_initial_input(mut self, input : i32) -> Self {
+        self.input.push_back(input);
 
         self
     }
 
-    pub fn read_input(&self) -> i32 {
-        self.input
+    pub fn runtime_input(&mut self, input: i32) {
+        self.input.push_back(input);
+        self.blocked = false;
+    }
+
+    pub fn has_input(&mut self) -> bool {
+        !self.input.is_empty()
+    }
+
+    pub fn read_input(&mut self) -> i32 {
+        self.input.pop_front().expect("Reached end of input")
     }
 
     pub fn do_operation(&mut self, instruction : &Instruction) -> &Self {
@@ -154,7 +176,9 @@ impl Automaton {
             _ => (),
         }
 
-        self.pc += self.get_increment_for_opcode(&instruction.opcode);
+        if !self.blocked {
+            self.pc += self.get_increment_for_opcode(&instruction.opcode);
+        }
 
         self
     }
@@ -241,235 +265,175 @@ impl Automaton {
     }
 
     pub fn op_input(&mut self, instr : &Instruction) {
-        let address = *self.get_address_value(instr, 0) as usize;
-        self.memory[address] = self.read_input();
+        if self.has_input() {
+            let address = *self.get_address_value(instr, 0) as usize;
+            self.memory[address] = self.read_input();
+        } else {
+            self.blocked = true;
+        }
     }
 
     pub fn op_output(&mut self, instr : &Instruction) {
         let address = *self.get_address_value(instr, 0) as usize;
         self.last_output = self.memory[address];
-        println!("{}", self.memory[address]);
+        // println!("{}", self.memory[address]);
     }
 
     pub fn op_exit(&mut self) {
-        self.finished = true;
+        self.halted = true;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::intcode::Automaton;
-    use std::collections::HashMap;
 
     #[test]
     fn test_one() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("1,0,0,0,99").set_input(1).run();
-        assert_eq!(*automaton.dump_memory(), vec![2,0,0,0,99]);
+        let mut automaton = Automaton::new()
+            .init().load("1,0,0,0,99").add_initial_input(1);
+        automaton.run();
+        assert_eq!(automaton.dump_memory(), &vec![2,0,0,0,99]);
     }
 
     #[test]
     fn test_two() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("2,3,0,3,99").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("2,3,0,3,99").add_initial_input(1);
+        automaton.run();
         assert_eq!(*automaton.dump_memory(), vec![2,3,0,6,99]);
     }
 
     #[test]
     fn test_three() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("2,4,4,5,99,0").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("2,4,4,5,99,0").add_initial_input(1);
+        automaton.run();
         assert_eq!(*automaton.dump_memory(), vec![2,4,4,5,99,9801]);
     }
 
     #[test]
     fn test_four() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("1,1,1,4,99,5,6,0,99").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("1,1,1,4,99,5,6,0,99").add_initial_input(1);
+        automaton.run();
         assert_eq!(*automaton.dump_memory(), vec![30,1,1,4,2,5,6,0,99]);
     }
 
     #[test]
     fn test_five() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("1002,4,3,4,33").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("1002,4,3,4,33").add_initial_input(1);
+        automaton.run();
         assert_eq!(*automaton.dump_memory(), vec![1002,4,3,4,99]);
     }
 
     #[test]
     fn test_negative_values() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("1101,100,-1,4,0").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("1101,100,-1,4,0").add_initial_input(1);
+        automaton.run();
         assert_eq!(*automaton.dump_memory(), vec![1101,100,-1,4,99]);
     }
 
     #[test]
     fn test_equal_positional() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,9,8,9,10,9,4,9,99,-1,8").set_input(8).run();
-        assert_eq!(automaton.get_last_output(), 1);
+        let mut automaton_equal_8 = Automaton::new()
+            .init().load("3,9,8,9,10,9,4,9,99,-1,8").add_initial_input(8);
+        automaton_equal_8.run();
+        assert_eq!(automaton_equal_8.get_last_output(), 1);
 
-        automaton.init().load("3,9,8,9,10,9,4,9,99,-1,8").set_input(1).run();
-        assert_eq!(automaton.get_last_output(), 0);
+        let mut automaton_less_than_8 = Automaton::new()
+            .init().load("3,9,8,9,10,9,4,9,99,-1,8").add_initial_input(1);
+        automaton_less_than_8.run();
+        assert_eq!(automaton_less_than_8.get_last_output(), 0);
     }
 
     #[test]
     fn test_less_than_positional() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,9,7,9,10,9,4,9,99,-1,8").set_input(7).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,9,7,9,10,9,4,9,99,-1,8").add_initial_input(7);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1);
 
-        automaton.init().load("3,9,7,9,10,9,4,9,99,-1,8").set_input(9).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,9,7,9,10,9,4,9,99,-1,8").add_initial_input(9);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 0);
     }
 
     #[test]
     fn test_equal_immediate() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,3,1108,-1,8,3,4,3,99").set_input(8).run();
-        assert_eq!(automaton.get_last_output(), 1);
+        let mut automaton_equal_8 = Automaton::new()
+            .init().load("3,3,1108,-1,8,3,4,3,99").add_initial_input(8);
+        automaton_equal_8.run();
+        assert_eq!(automaton_equal_8.get_last_output(), 1);
 
-        automaton.init().load("3,3,1108,-1,8,3,4,3,99").set_input(1).run();
-        assert_eq!(automaton.get_last_output(), 0);
+        let mut automaton_less_than_8 = Automaton::new()
+            .init().load("3,3,1108,-1,8,3,4,3,99").add_initial_input(1);
+        automaton_less_than_8.run();
+        assert_eq!(automaton_less_than_8.get_last_output(), 0);
     }
 
     #[test]
     fn test_less_than_immediate() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,3,1107,-1,8,3,4,3,99").set_input(7).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,3,1107,-1,8,3,4,3,99").add_initial_input(7);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1);
 
-        automaton.init().load("3,3,1107,-1,8,3,4,3,99").set_input(9).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,3,1107,-1,8,3,4,3,99").add_initial_input(9);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 0);
     }
 
     #[test]
     fn test_jump_position() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9").set_input(0).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9").add_initial_input(0);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 0);
 
-        automaton.init().load("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,12,6,12,15,1,13,14,13,4,13,99,-1,0,1,9").add_initial_input(1);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1);
     }
 
     #[test]
     fn test_jump_immediate() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init().load("3,3,1105,-1,9,1101,0,0,12,4,12,99,1").set_input(0).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,3,1105,-1,9,1101,0,0,12,4,12,99,1").add_initial_input(0);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 0);
 
-        automaton.init().load("3,3,1105,-1,9,1101,0,0,12,4,12,99,1").set_input(1).run();
+        let mut automaton = Automaton::new()
+            .init().load("3,3,1105,-1,9,1101,0,0,12,4,12,99,1").add_initial_input(1);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1);
     }
 
     #[test]
     fn test_around_eight() {
-        let mut automaton = Automaton {
-            instruction_set: HashMap::new(),
-            pc: 0,
-            finished: false,
-            memory: vec![],
-            input: 0,
-            last_output: 0,
-        };
-        automaton.init()
-            .load("3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99")
-            .set_input(7).run();
+        let program = "3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99";
+        let mut automaton = Automaton::new()
+            .init()
+            .load(program)
+            .add_initial_input(7);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 999);
 
-        automaton.init()
-            .load("3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99")
-            .set_input(8).run();
+        let mut automaton = Automaton::new().init()
+            .load(program)
+            .add_initial_input(8);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1000);
 
-        automaton.init()
-            .load("3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99")
-            .set_input(9).run();
+        let mut automaton = Automaton::new().init()
+            .load(program)
+            .add_initial_input(9);
+        automaton.run();
         assert_eq!(automaton.get_last_output(), 1001);
     }
 }
