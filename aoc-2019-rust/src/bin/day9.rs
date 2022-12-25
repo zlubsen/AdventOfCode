@@ -28,4 +28,10 @@ fn part1() {
 }
 
 fn part2() {
+    let input = read_input("inputs/day9.txt");
+    let mut automaton = Automaton::new_with_program(input.as_str())
+        .add_initial_input(2);
+    automaton.run();
+    let coordinates = automaton.get_last_output();
+    println!("{coordinates}");
 }

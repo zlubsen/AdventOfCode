@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::collections::{HashMap, VecDeque};
 use itertools::Itertools;
 
@@ -15,11 +14,11 @@ pub struct Instruction {
 
 #[derive(Debug)]
 pub struct Parameter {
-    param : i128,
+    address: u128,
     mode : ParameterMode,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ParameterMode {
     Position = 0,
     Immediate = 1,
@@ -33,7 +32,7 @@ pub struct Automaton {
     pub blocked : bool,
     pub memory : HashMap<u128,i128>,
     pub input : VecDeque<i128>,
-    pub last_output : i128,
+    pub output : Vec<i128>,
     pub relative_base: i128,
 }
 
@@ -46,7 +45,7 @@ impl Automaton {
             blocked: false,
             memory: HashMap::new(),
             input: VecDeque::new(),
-            last_output: 0,
+            output: Vec::new(),
             relative_base: 0,
         };
 
@@ -77,8 +76,6 @@ impl Automaton {
     }
 
     fn load(mut self, input : &str) -> Self {
-        self.pc = 0;
-        self.halted = false;
         input.split(",")
             .filter_map(|w| w.parse().ok())
             .enumerate()
@@ -89,21 +86,22 @@ impl Automaton {
         self
     }
 
-    fn decode(&self) -> Option<Instruction> {
-        let val = self.address(self.pc);
+    fn decode(&self) -> Instruction {
+        let val = self.read_value(self.pc, ParameterMode::Immediate) as i128;
         match val {
-            1..=99 => Some(self.decode_default(&val)),
-            100..=99999 => Some(self.decode_extended(&val)),
-            _ => None
+            1..=99 => self.decode_default(&val),
+            100..=99999 => self.decode_extended(&val),
+            invalid => panic!("Invalid opcode: {invalid}")
         }
     }
 
     fn decode_default(&self, val: &i128) -> Instruction {
         let opcode = *val as i8;
+        let num_params = self.instruction_set.get(&opcode).unwrap().no_params as u128;
         let mut params = Vec::new();
-        for i in 1..=(self.instruction_set.get(&opcode).unwrap().no_params as isize) {
+        for i in 1..=num_params {
             params.push(Parameter {
-                param : self.memory.get(&(self.pc + i as u128)).unwrap_or(&0).clone(),
+                address: self.pc + i,
                 mode : ParameterMode::Position,
             });
         };
@@ -122,13 +120,13 @@ impl Automaton {
         let opcode = &op_extended[3..=4].parse::<i8>().ok().unwrap();
 
         let mut params = Vec::new();
-        for i in 1..=(self.instruction_set.get(&opcode).unwrap().no_params as usize) {
-            let index = 3-i;
+        for i in 1..=(self.instruction_set.get(&opcode).unwrap().no_params as u128) {
+            let index = 3-(i as usize);
             let param_mode = &op_extended[index..=index].parse().ok().unwrap();
-            let param = self.memory.get(&(self.pc + i as u128)).unwrap_or(&0).clone();
+            let address = self.pc + i;
 
             params.push(Parameter {
-                param,
+                address,
                 mode : match param_mode {
                     0 => ParameterMode::Position,
                     1 => ParameterMode::Immediate,
@@ -145,7 +143,7 @@ impl Automaton {
 
     pub fn run(&mut self) {
         while !self.halted && !self.blocked {
-            let instruction = self.decode().unwrap();
+            let instruction = self.decode();
             self.do_operation(&instruction);
         }
     }
@@ -162,7 +160,7 @@ impl Automaton {
     }
 
     pub fn get_last_output(&self) -> i128 {
-        self.last_output
+        self.output.iter().last().unwrap().clone()
     }
 
     pub fn add_initial_input(mut self, input : i128) -> Self {
@@ -182,6 +180,39 @@ impl Automaton {
 
     fn read_input(&mut self) -> i128 {
         self.input.pop_front().expect("Reached end of input")
+    }
+
+    fn write_value(&mut self, value: i128, write_parameter: u128, mode: ParameterMode) {
+        let address = self.parameter_to_address(write_parameter, mode) as u128;
+        self.memory.insert(address, value);
+    }
+
+    fn read_value(&self, read_parameter: u128, mode: ParameterMode) -> i128 {
+        let address = self.parameter_to_address(read_parameter, mode);
+        let value = self.read_from_address(address);
+        value
+    }
+
+    fn parameter_to_address(&self, param_value: u128, mode: ParameterMode) -> u128 {
+        match mode {
+            ParameterMode::Position => {
+                self.read_from_address(param_value) as u128
+            }
+            ParameterMode::Immediate => {
+                param_value
+            }
+            ParameterMode::Relative => {
+                (self.read_from_address(param_value) + self.relative_base) as u128
+            }
+        }
+    }
+
+    fn read_from_address(&self, address: u128) -> i128 {
+        *self.memory.get(&address).unwrap_or(&0)
+    }
+
+    fn get_increment_for_opcode(&self, opcode : &i8) -> u128 {
+        (self.instruction_set.get(opcode).unwrap().no_params + 1) as u128
     }
 
     fn do_operation(&mut self, instruction : &Instruction) {
@@ -206,64 +237,37 @@ impl Automaton {
         }
     }
 
-    fn get_param_value<'a>(&'a self, instr : &'a Instruction, param_index: usize) -> i128 {
-        let param_value = instr.params.get(param_index).unwrap().param;
-        match instr.params.get(param_index).unwrap().mode.borrow() {
-            ParameterMode::Position => {
-                self.address(param_value as u128)
-            },
-            ParameterMode::Immediate =>
-                param_value,
-            ParameterMode::Relative => {
-                let address = self.relative_base.saturating_add(param_value) as u128;
-                self.address(address)
-            },
-        }
-    }
-
-    fn address(&self, address: u128) -> i128 {
-        self.memory.get(&address).unwrap_or(&0).clone()
-    }
-
-    fn get_address_value<'a>(&'a self, instr : &'a Instruction, param_index: usize) -> &'a i128 {
-        instr.params.get(param_index).unwrap().param.borrow()
-    }
-
-    fn get_increment_for_opcode(&self, opcode : &i8) -> u128 {
-        (self.instruction_set.get(opcode).unwrap().no_params + 1) as u128
-    }
-
     fn op_add(&mut self, instr : &Instruction) -> u128 {
-        let result;
-        let address;
-        {
-            let op1 = self.get_param_value(instr, 0);
-            let op2 = self.get_param_value(instr, 1);
-            address = *self.get_address_value(instr, 2) as u128;
-            result = op1 + op2;
-        }
-        self.memory.insert(address, result);
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
+        let param3 = instr.params.get(2).unwrap();
+
+        let result = op1 + op2;
+        self.write_value(result, param3.address, param3.mode);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
 
     fn op_mult(&mut self, instr : &Instruction) -> u128 {
-        let result;
-        let address;
-        {
-            let op1 = self.get_param_value(instr, 0);
-            let op2 = self.get_param_value(instr, 1);
-            address = *self.get_address_value(instr, 2) as u128;
-            result = op1 * op2;
-        }
-        self.memory.insert(address, result);
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
+        let param3 = instr.params.get(2).unwrap();
+
+        let result = op1 * op2;
+        self.write_value(result, param3.address, param3.mode);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
 
     fn op_jump_if_true(&mut self, instr : &Instruction) -> u128 {
-        let op1 = self.get_param_value(instr, 0);
-        let op2 = self.get_param_value(instr, 1);
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
 
         if op1 != 0 {
             op2 as u128
@@ -273,8 +277,10 @@ impl Automaton {
     }
 
     fn op_jump_if_false(&mut self, instr : &Instruction) -> u128 {
-        let op1 = self.get_param_value(instr, 0);
-        let op2 = self.get_param_value(instr, 1);
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
 
         if op1 == 0 {
             op2 as u128
@@ -284,39 +290,40 @@ impl Automaton {
     }
 
     fn op_less_than(&mut self, instr : &Instruction) -> u128 {
-        let op1 = self.get_param_value(instr, 0);
-        let op2 = self.get_param_value(instr, 1);
-        let address = *self.get_address_value(instr, 2) as u128;
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
+        let param3 = instr.params.get(2).unwrap();
 
-        self.memory.insert(address, match op1 < op2 {
+        self.write_value(match op1 < op2 {
             true => 1,
             false => 0,
-        });
+        }, param3.address, param3.mode);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
 
     fn op_equals(&mut self, instr : &Instruction) -> u128 {
-        let op1 = self.get_param_value(instr, 0);
-        let op2 = self.get_param_value(instr, 1);
-        let address = *self.get_address_value(instr, 2) as u128;
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address, param1.mode);
+        let param2 = instr.params.get(1).unwrap();
+        let op2 = self.read_value(param2.address, param2.mode);
+        let param3 = instr.params.get(2).unwrap();
 
-        self.memory.insert(address, match op1 == op2 {
+        self.write_value(match op1 == op2 {
             true => 1,
             false => 0,
-        });
+        }, param3.address, param3.mode);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
 
     fn op_input(&mut self, instr : &Instruction) -> u128 {
         let pc_increment = if self.has_input() {
-
-            let address = self.get_param_value(instr, 0) as u128;
-            // let address = *self.get_address_value(instr, 0) as u128;
+            let param1 = instr.params.get(0).unwrap();
             let input = self.read_input();
-            println!("pc {} base {} op {} {:?} -> addr {address} input {input}", self.pc, self.relative_base, instr.opcode, instr.params);
-            self.memory.insert(address, input);
+            self.write_value(input, param1.address, param1.mode);
             self.get_increment_for_opcode(&instr.opcode)
         } else {
             self.blocked = true;
@@ -327,16 +334,17 @@ impl Automaton {
     }
 
     fn op_output(&mut self, instr : &Instruction) -> u128 {
-        let param_value = self.get_param_value(instr, 0);
-        self.last_output = param_value;
-        println!("{}", self.last_output);
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address as u128, param1.mode);
+        self.output.push(op1);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
 
     fn op_relative_base(&mut self, instr : &Instruction) -> u128 {
-        let offset = self.get_param_value(instr, 0).clone();
-        self.relative_base += offset;
+        let param1 = instr.params.get(0).unwrap();
+        let op1 = self.read_value(param1.address as u128, param1.mode);
+        self.relative_base += op1;
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
@@ -508,7 +516,7 @@ mod tests {
         let program = "109,2019,204,-34,99";
         let mut automaton = Automaton::new_with_program(program);
         automaton.run();
-        assert_eq!(automaton.last_output, 0);
+        assert_eq!(automaton.get_last_output(), 0);
     }
 
     #[test]
