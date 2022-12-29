@@ -30,6 +30,13 @@ fn part1() {
 
 fn part2() {
     // let input = read_input("inputs/day9.txt");
+
+    // 1 find location of monitoring station > add coordinates to visibles_per_asteroid
+    // 2 sort visibles from that location by angle (0-360)
+    // 3 for one rotation determine which coordinates get shot
+    // 4 keep track of number of shots
+    // 5 keep track which coordinates are gone
+    // 6 return to 3) using updated map, removing the shot coordinates
 }
 
 fn parse_map(input: &str) -> Vec<Coordinate> {
@@ -61,6 +68,30 @@ fn highest_visible(visibles: Vec<usize>) -> usize {
     **(aa.first().unwrap())
 }
 
+struct Aim {
+    angle: f32,
+    distance: f32,
+    shooter: Coordinate,
+    target: Coordinate,
+}
+
+fn find_optimal_coordinate(map: &Vec<Coordinate>) -> (Coordinate, usize) {
+    let count = map.iter().map(|coordinate| map.iter()
+        .filter(|&other| coordinate != other )
+        .map(|other| {
+            Aim {
+                angle: angle(&coordinate, &other),
+                distance: distance(&coordinate, &other),
+                shooter: (coordinate.0, coordinate.1),
+                target: (other.0, other.1),
+            }
+        })
+        .sorted_by(|a, b| a.angle.total_cmp(&b.angle))
+        .collect::<Vec<Aim>>())
+        .collect::<Vec<Vec<Aim>>>();
+    count
+}
+
 fn angle(a: &Coordinate, b: &Coordinate) -> f32 {
     let x = b.0 as f32 - a.0 as f32;
     let y = b.1 as f32 - a.1 as f32;
@@ -71,6 +102,10 @@ fn angle(a: &Coordinate, b: &Coordinate) -> f32 {
     } else {
         degrees
     }
+}
+
+fn distance(a: &Coordinate, b: &Coordinate) -> f32 {
+    (((b.0 - a.0) as f32).powi(2) + ((b.1 - a.1) as f32).powi(2)).sqrt()
 }
 
 #[cfg(test)]
