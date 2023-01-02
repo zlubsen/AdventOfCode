@@ -22,9 +22,8 @@ fn main() {
 
 fn part1() {
     let input = read_input("inputs/day10.txt");
-    let map: Vec<(usize, usize)> = parse_map(&input);
-    let visibles = visibles_per_asteroid(map);
-    let highest = highest_visible(visibles);
+    let map: Vec<Coordinate> = parse_map(&input);
+    let highest = find_optimal_station(map);
     println!("{highest}");
 }
 
@@ -52,44 +51,26 @@ fn parse_map(input: &str) -> Vec<Coordinate> {
         ).flatten().collect()
 }
 
-fn visibles_per_asteroid(map: Vec<Coordinate>) -> Vec<usize> {
-    let count = map.iter().map(|coordinate| map.iter()
-        .filter(|&other| coordinate != other )
-        .map(|other| angle(&coordinate, &other))
+fn count_targets_for(map: &Vec<Coordinate>, base: &Coordinate) -> usize {
+    map.iter()
+        .filter(|&astro| astro != base )
+        .map(|astro| angle(base, astro) )
         .sorted_by(f32::total_cmp)
-        .dedup().collect::<Vec<f32>>())
-        .map(|asteroids| asteroids.len())
-        .collect::<Vec<usize>>();
-    count
+        .dedup().count()
 }
 
-fn highest_visible(visibles: Vec<usize>) -> usize {
-    let aa = visibles.iter().sorted().rev().collect::<Vec<&usize>>();
-    **(aa.first().unwrap())
+fn find_optimal_station(map: Vec<Coordinate>) -> usize {
+    map.iter().map(|astro| count_targets_for(&map, astro) ).max().unwrap()
 }
 
-struct Aim {
-    angle: f32,
-    distance: f32,
-    shooter: Coordinate,
-    target: Coordinate,
-}
+fn targeting_order(map: &Vec<Coordinate>, base: &Coordinate) -> Vec<Coordinate> {
+    // map.iter().max_by(| &a, &b| count_targets_for(map, a).cmp(&count_targets_for(map, b))).
+    let a = map.iter()
+        .filter(|&astro| astro != base)
+        .group_by(|&astro| angle(base, astro).total_cmp)
+        .flat_map(|it| ());
 
-fn find_optimal_coordinate(map: &Vec<Coordinate>) -> (Coordinate, usize) {
-    let count = map.iter().map(|coordinate| map.iter()
-        .filter(|&other| coordinate != other )
-        .map(|other| {
-            Aim {
-                angle: angle(&coordinate, &other),
-                distance: distance(&coordinate, &other),
-                shooter: (coordinate.0, coordinate.1),
-                target: (other.0, other.1),
-            }
-        })
-        .sorted_by(|a, b| a.angle.total_cmp(&b.angle))
-        .collect::<Vec<Aim>>())
-        .collect::<Vec<Vec<Aim>>>();
-    count
+    vec![]
 }
 
 fn angle(a: &Coordinate, b: &Coordinate) -> f32 {
@@ -104,13 +85,14 @@ fn angle(a: &Coordinate, b: &Coordinate) -> f32 {
     }
 }
 
-fn distance(a: &Coordinate, b: &Coordinate) -> f32 {
-    (((b.0 - a.0) as f32).powi(2) + ((b.1 - a.1) as f32).powi(2)).sqrt()
+fn distance(a: &Coordinate, b: &Coordinate) -> i32 {
+    (a.0 as i32 - b.0 as i32).abs() + (a.1 as i32 - b.1 as i32).abs() // manhattan distance as i32
+    // (((b.0 - a.0) as f32).powi(2) + ((b.1 - a.1) as f32).powi(2)).sqrt() // actual distance of vector as f32
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{angle, highest_visible, parse_map, visibles_per_asteroid};
+    use crate::{angle, find_optimal_station, highest_visible, parse_map, visibles_per_asteroid};
 
     #[test]
     fn test_parse_map() {
@@ -176,10 +158,12 @@ mod tests {
                 ...##
             ";
         let map = parse_map(input);
-        let visibles = visibles_per_asteroid(map);
-        assert_eq!(visibles, [7, 7, 6, 7, 7, 7, 5, 7, 8, 7]);
-        let highest = highest_visible(visibles);
+        let highest = find_optimal_station(map);
         assert_eq!(highest, 8);
+        // let visibles = visibles_per_asteroid(map);
+        // assert_eq!(visibles, [7, 7, 6, 7, 7, 7, 5, 7, 8, 7]);
+        // let highest = highest_visible(visibles);
+        // assert_eq!(highest, 8);
     }
 
     #[test]
@@ -197,8 +181,7 @@ mod tests {
                 .#....####
             ";
         let map = parse_map(input);
-        let visibles = visibles_per_asteroid(map);
-        let highest = highest_visible(visibles);
+        let highest = find_optimal_station(map);
         assert_eq!(highest, 33);
     }
 
@@ -217,8 +200,7 @@ mod tests {
                 .####.###.
             ";
         let map = parse_map(input);
-        let visibles = visibles_per_asteroid(map);
-        let highest = highest_visible(visibles);
+        let highest = find_optimal_station(map);
         assert_eq!(highest, 35);
     }
 
@@ -237,8 +219,7 @@ mod tests {
                 .....#.#..
             ";
         let map = parse_map(input);
-        let visibles = visibles_per_asteroid(map);
-        let highest = highest_visible(visibles);
+        let highest = find_optimal_station(map);
         assert_eq!(highest, 41);
     }
 
@@ -267,8 +248,7 @@ mod tests {
                 ###.##.####.##.#..##
             ";
         let map = parse_map(input);
-        let visibles = visibles_per_asteroid(map);
-        let highest = highest_visible(visibles);
+        let highest = find_optimal_station(map);
         assert_eq!(highest, 210);
     }
 }
