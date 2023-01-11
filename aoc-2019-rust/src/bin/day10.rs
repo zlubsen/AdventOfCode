@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap};
 use std::time::Instant;
 use itertools::Itertools;
 use aoc_2019_rust::read_input;
@@ -23,12 +24,17 @@ fn main() {
 fn part1() {
     let input = read_input("inputs/day10.txt");
     let map: Vec<Coordinate> = parse_map(&input);
-    let highest = find_optimal_station(map);
+    let highest = find_optimal_station(&map);
     println!("{highest}");
 }
 
 fn part2() {
-    // let input = read_input("inputs/day9.txt");
+    let input = read_input("inputs/day10.txt");
+    let map = parse_map(&input);
+    let base = find_optimal_station_coordinates(&map);
+    let targets_in_order = targeting_order(&map, base);
+    let solution = solve_200th_element(&targets_in_order);
+    println!("{solution}");
 
     // 1 find location of monitoring station > add coordinates to visibles_per_asteroid
     // 2 sort visibles from that location by angle (0-360)
@@ -59,18 +65,41 @@ fn count_targets_for(map: &Vec<Coordinate>, base: &Coordinate) -> usize {
         .dedup().count()
 }
 
-fn find_optimal_station(map: Vec<Coordinate>) -> usize {
+fn find_optimal_station(map: &Vec<Coordinate>) -> usize {
     map.iter().map(|astro| count_targets_for(&map, astro) ).max().unwrap()
 }
 
-fn targeting_order(map: &Vec<Coordinate>, base: &Coordinate) -> Vec<Coordinate> {
-    // map.iter().max_by(| &a, &b| count_targets_for(map, a).cmp(&count_targets_for(map, b))).
-    let a = map.iter()
-        .filter(|&astro| astro != base)
-        .group_by(|&astro| angle(base, astro).total_cmp)
-        .flat_map(|it| ());
+fn find_optimal_station_coordinates(map: &Vec<Coordinate>) -> &Coordinate {
+    map.iter().max_by(|a, b|
+        count_targets_for(&map, &a).cmp(&count_targets_for(&map, &b))).unwrap()
+}
 
-    vec![]
+fn targeting_order(map: &Vec<Coordinate>, base: &Coordinate) -> Vec<Coordinate> {
+    let mut targets_by_angle = map.iter()
+        .filter(|&astro| astro != base)
+        .fold(BTreeMap::<i32, Vec<Coordinate>>::new(), | mut acc, astro| {
+            acc.entry((angle(base, astro) * 10.0) as i32).or_default().push(astro.clone());
+            acc
+        });
+    targets_by_angle.iter_mut()
+        .for_each(|(_, v)|
+            v.sort_by( |a,b| {
+                distance(base,a).cmp(&distance(base, b))
+            }));
+
+    let targets_in_order : Vec<Coordinate> = targets_by_angle
+        .values()
+        .flat_map(|targets| targets.iter().enumerate())
+        .sorted_by(|a,b| a.0.cmp(&b.0) )
+        .map(|target| target.1.clone() )
+        .collect();
+
+    targets_in_order
+}
+
+fn solve_200th_element(targets: &Vec<Coordinate>) -> usize {
+    let element = targets.iter().skip(199).next().unwrap();
+    (element.0 * 100) + element.1
 }
 
 fn angle(a: &Coordinate, b: &Coordinate) -> f32 {
@@ -92,7 +121,7 @@ fn distance(a: &Coordinate, b: &Coordinate) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{angle, find_optimal_station, highest_visible, parse_map, visibles_per_asteroid};
+    use crate::{angle, Coordinate, find_optimal_station, find_optimal_station_coordinates, parse_map, solve_200th_element, targeting_order};
 
     #[test]
     fn test_parse_map() {
@@ -158,7 +187,7 @@ mod tests {
                 ...##
             ";
         let map = parse_map(input);
-        let highest = find_optimal_station(map);
+        let highest = find_optimal_station(&map);
         assert_eq!(highest, 8);
         // let visibles = visibles_per_asteroid(map);
         // assert_eq!(visibles, [7, 7, 6, 7, 7, 7, 5, 7, 8, 7]);
@@ -181,7 +210,7 @@ mod tests {
                 .#....####
             ";
         let map = parse_map(input);
-        let highest = find_optimal_station(map);
+        let highest = find_optimal_station(&map);
         assert_eq!(highest, 33);
     }
 
@@ -200,7 +229,7 @@ mod tests {
                 .####.###.
             ";
         let map = parse_map(input);
-        let highest = find_optimal_station(map);
+        let highest = find_optimal_station(&map);
         assert_eq!(highest, 35);
     }
 
@@ -219,13 +248,11 @@ mod tests {
                 .....#.#..
             ";
         let map = parse_map(input);
-        let highest = find_optimal_station(map);
+        let highest = find_optimal_station(&map);
         assert_eq!(highest, 41);
     }
 
-    #[test]
-    fn test_larger_example_4() {
-        let input = r"
+    const LARGER_EXAMPLE_4 : &str = r"
                 .#..##.###...#######
                 ##.############..##.
                 .#.######.########.#
@@ -247,8 +274,41 @@ mod tests {
                 #.#.#.#####.####.###
                 ###.##.####.##.#..##
             ";
+
+    #[test]
+    fn test_larger_example_4() {
+        let input = LARGER_EXAMPLE_4;
         let map = parse_map(input);
-        let highest = find_optimal_station(map);
+        let highest = find_optimal_station(&map);
         assert_eq!(highest, 210);
+    }
+
+    #[test]
+    fn test_target_order() {
+        let input = r"
+            .#....#####...#..
+            ##...##.#####..##
+            ##...#...#.#####.
+            ..#.....X...###..
+            ..#.#.....#....##
+        ";
+        let map = parse_map(input);
+        let targets_in_order = targeting_order(&map, &(8,3));
+        // for visual inspection...
+        println!("{:?}", targets_in_order.iter().enumerate().collect::<Vec<(usize,&Coordinate)>>());
+
+        assert_eq!(targets_in_order.len(), 36);
+    }
+
+    #[test]
+    fn test_larger_example_target_order() {
+        let input = LARGER_EXAMPLE_4;
+        let map = parse_map(input);
+        let base = find_optimal_station_coordinates(&map);
+        assert_eq!(base, &(11,13));
+        let targets_in_order = targeting_order(&map, base);
+
+        let solution = solve_200th_element(&targets_in_order);
+        assert_eq!(solution, 802);
     }
 }
