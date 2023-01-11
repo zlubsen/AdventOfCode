@@ -163,6 +163,13 @@ impl Automaton {
         self.output.iter().last().unwrap().clone()
     }
 
+    pub fn get_last_2_outputs(&self) -> (i128,i128) {
+        (
+            self.output.get(self.output.len().saturating_sub(2)).unwrap().clone(),
+            self.output.iter().last().unwrap().clone()
+        )
+    }
+
     pub fn add_initial_input(mut self, input : i128) -> Self {
         self.input.push_back(input);
 

@@ -35,13 +35,6 @@ fn part2() {
     let targets_in_order = targeting_order(&map, base);
     let solution = solve_200th_element(&targets_in_order);
     println!("{solution}");
-
-    // 1 find location of monitoring station > add coordinates to visibles_per_asteroid
-    // 2 sort visibles from that location by angle (0-360)
-    // 3 for one rotation determine which coordinates get shot
-    // 4 keep track of number of shots
-    // 5 keep track which coordinates are gone
-    // 6 return to 3) using updated map, removing the shot coordinates
 }
 
 fn parse_map(input: &str) -> Vec<Coordinate> {
