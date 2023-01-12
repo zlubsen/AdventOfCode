@@ -22,7 +22,9 @@ fn main() {
 fn part1() {
     let input = read_input("inputs/day12.txt");
     let mut sim = Sim::new(&input);
-    sim.step();
+    sim.take_steps(1000);
+    let total_energy = sim.total_energy();
+    println!("{total_energy}");
 }
 
 fn part2() {
@@ -36,10 +38,13 @@ struct Sim {
 
 impl Sim {
     fn new(input: &str) -> Self {
-        let moons = input.split("\n").map(|line| {
-            Moon::from_line(line)
-        }).collect();
-println!("{:?}", moons);
+        let moons = input.split("\n")
+            .map(|line| line.trim())
+            .filter(|&line| !line.is_empty())
+            .map(|line| {
+                Moon::from_line(line)
+            }).collect();
+
         Self {
             moons,
             step: 0,
@@ -47,8 +52,6 @@ println!("{:?}", moons);
     }
 
     fn step(&mut self) {
-        // let combos : Vec<Vec<usize>> = (0..self.moons.len()).combinations(2).collect();
-        // println!("{:?}", combos);
         (0..self.moons.len())
             .combinations(2)
             .for_each(|combo| {
@@ -57,22 +60,57 @@ println!("{:?}", moons);
                 self.apply_gravity(*moon_1, *moon_2);
         });
         self.apply_velocity();
+        self.step += 1;
+    }
+
+    fn take_steps(&mut self, n: usize) {
+        (0..n).for_each(|_| self.step() );
     }
 
     fn apply_gravity(&mut self, idx_1: usize, idx_2: usize) {
-        let mut moon_1 = self.moons.get_mut(idx_1).unwrap();
-        let mut moon_2 = self.moons.get_mut(idx_2).unwrap();
+        let moon_1 = self.moons.get(idx_1).unwrap();
+        let moon_2 = self.moons.get(idx_2).unwrap();
+        let mut new_1 = moon_1.clone();
+        let mut new_2 = moon_2.clone();
+
         match moon_1.position.x.cmp(&moon_2.position.x) {
             Ordering::Less => {
-                moon_1.position.x += 1;
-                moon_2.position.x -= 1;
+                new_1.velocity.x += 1;
+                new_2.velocity.x -= 1;
             }
-            Ordering::Equal => {}
+            Ordering::Equal => {
+            }
             Ordering::Greater => {
-                moon_1.position.x -= 1;
-                moon_2.position.x += 1;
+                new_1.velocity.x -= 1;
+                new_2.velocity.x += 1;
             }
         }
+        match moon_1.position.y.cmp(&moon_2.position.y) {
+            Ordering::Less => {
+                new_1.velocity.y += 1;
+                new_2.velocity.y -= 1;
+            }
+            Ordering::Equal => {
+            }
+            Ordering::Greater => {
+                new_1.velocity.y -= 1;
+                new_2.velocity.y += 1;
+            }
+        }
+        match moon_1.position.z.cmp(&moon_2.position.z) {
+            Ordering::Less => {
+                new_1.velocity.z += 1;
+                new_2.velocity.z -= 1;
+            }
+            Ordering::Equal => {
+            }
+            Ordering::Greater => {
+                new_1.velocity.z -= 1;
+                new_2.velocity.z += 1;
+            }
+        }
+        self.moons[idx_1] = new_1;
+        self.moons[idx_2] = new_2;
     }
 
     fn apply_velocity(&mut self) {
@@ -80,9 +118,14 @@ println!("{:?}", moons);
             moon.apply_velocity()
         });
     }
+
+    fn total_energy(&self) -> i32 {
+        self.moons.iter()
+            .fold(0, |acc, moon| acc + moon.total_energy() )
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Moon {
     position: Vector,
     velocity: Vector,
@@ -110,9 +153,21 @@ impl Moon {
         self.position.y = self.position.y + self.velocity.y;
         self.position.z = self.position.z + self.velocity.z;
     }
+
+    fn potential_energy(&self) -> i32 {
+        self.position.energy()
+    }
+
+    fn kinetic_energy(&self) -> i32 {
+        self.velocity.energy()
+    }
+
+    fn total_energy(&self) -> i32 {
+        self.potential_energy() * self.kinetic_energy()
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Vector {
     x: i32,
     y: i32,
@@ -134,5 +189,37 @@ impl Vector {
             y,
             z,
         }
+    }
+
+    fn energy(&self) -> i32 {
+        self.x.abs() +
+            self.y.abs() +
+            self.z.abs()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Sim;
+
+    #[test]
+    fn test_example_1() {
+        let input = r"
+                <x=-1, y=0, z=2>
+                <x=2, y=-10, z=-7>
+                <x=4, y=-8, z=8>
+                <x=3, y=5, z=-1>
+            ";
+        let mut sim = Sim::new(input);
+        sim.take_steps(10);
+
+        assert_eq!(sim.moons.get(0).unwrap().position.x, 2);
+        assert_eq!(sim.moons.get(0).unwrap().position.y, 1);
+        assert_eq!(sim.moons.get(0).unwrap().position.z, -3);
+        assert_eq!(sim.moons.get(0).unwrap().velocity.x, -3);
+        assert_eq!(sim.moons.get(0).unwrap().velocity.y, -2);
+        assert_eq!(sim.moons.get(0).unwrap().velocity.z, 1);
+
+        assert_eq!(sim.total_energy(), 179);
     }
 }
