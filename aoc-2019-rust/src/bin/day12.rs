@@ -28,7 +28,30 @@ fn part1() {
 }
 
 fn part2() {
-    // let input = read_input("inputs/day12.txt");
+    let input = read_input("inputs/day12.txt");
+    let mut sim = Sim::new(&input);
+
+    let starting_x : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.x, moon.velocity.x)).collect();
+    let starting_y : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.y, moon.velocity.y)).collect();
+    let starting_z : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.z, moon.velocity.z)).collect();
+    let mut x_cycle : Option<i64> = None;
+    let mut y_cycle : Option<i64> = None;
+    let mut z_cycle : Option<i64> = None;
+    let mut step_count = 0i64;
+
+    while x_cycle.is_none() || y_cycle.is_none() || z_cycle.is_none() {
+        step_count += 1;
+        sim.step();
+        let current_x : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.x, moon.velocity.x)).collect();
+        let current_y : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.y, moon.velocity.y)).collect();
+        let current_z : Vec<(i32,i32)> = sim.moons.iter().map(|moon| (moon.position.z, moon.velocity.z)).collect();
+        x_cycle = if x_cycle.is_none() && (starting_x == current_x) { Some(step_count) } else { x_cycle };
+        y_cycle = if y_cycle.is_none() && (starting_y == current_y) { Some(step_count) } else { y_cycle };
+        z_cycle = if z_cycle.is_none() && (starting_z == current_z) { Some(step_count) } else { z_cycle };
+    }
+
+    let cycle = lcm(x_cycle.unwrap(), lcm(y_cycle.unwrap(), z_cycle.unwrap()));
+    println!("{cycle}");
 }
 
 struct Sim {
@@ -196,6 +219,21 @@ impl Vector {
             self.y.abs() +
             self.z.abs()
     }
+}
+
+fn gcd(a: i64, b: i64) -> i64 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let y_2 = y;
+        y = x % y;
+        x = y_2;
+    }
+    x
+}
+
+fn lcm(a: i64, b: i64) -> i64 {
+    a * b / gcd(a, b)
 }
 
 #[cfg(test)]
