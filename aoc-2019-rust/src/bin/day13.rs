@@ -33,7 +33,12 @@ fn part1() {
 }
 
 fn part2() {
-    let program = read_input("inputs/day13.txt");
+    let input = read_input("inputs/day13.txt");
+    let program = {
+        let mut program = String::from("2");
+        program.push_str(&input[1..]);
+        program
+    };
     let mut arcade = Arcade::new(&program);
     arcade.play();
     println!("{}", arcade.score);
@@ -105,18 +110,6 @@ enum Tile {
     Block,
     HorizontalPaddle,
     Ball,
-}
-
-impl Tile {
-    fn to_char(&self) -> char {
-        match self {
-            Tile::Empty => { ' ' }
-            Tile::Wall => { '|' }
-            Tile::Block => { '[' }
-            Tile::HorizontalPaddle => { '~' }
-            Tile::Ball => { 'O' }
-        }
-    }
 }
 
 impl From<i128> for Tile {
