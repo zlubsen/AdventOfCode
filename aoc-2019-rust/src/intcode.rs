@@ -32,7 +32,8 @@ pub struct Automaton {
     pub blocked : bool,
     pub memory : HashMap<u128,i128>,
     pub input : VecDeque<i128>,
-    pub output : Vec<i128>,
+    pub output : VecDeque<i128>,
+    pub output_curr_index : usize,
     pub relative_base: i128,
 }
 
@@ -45,7 +46,8 @@ impl Automaton {
             blocked: false,
             memory: HashMap::new(),
             input: VecDeque::new(),
-            output: Vec::new(),
+            output: VecDeque::new(),
+            output_curr_index: 0,
             relative_base: 0,
         };
 
@@ -168,6 +170,20 @@ impl Automaton {
             self.output.get(self.output.len().saturating_sub(2)).unwrap().clone(),
             self.output.iter().last().unwrap().clone()
         )
+    }
+
+    pub fn has_output(&self) -> bool {
+        !self.output.is_empty() && (self.output.len() > self.output_curr_index)
+    }
+
+    pub fn get_output(&mut self, n: usize) -> Option<Vec<i128>> {
+        if (self.output_curr_index + n) > self.output.len() {
+            None
+        } else {
+            let out = self.output.iter().skip(self.output_curr_index).take(n).map(|&entry| entry).collect();
+            self.output_curr_index += n;
+            Some(out)
+        }
     }
 
     pub fn add_initial_input(mut self, input : i128) -> Self {
@@ -343,7 +359,7 @@ impl Automaton {
     fn op_output(&mut self, instr : &Instruction) -> u128 {
         let param1 = instr.params.get(0).unwrap();
         let op1 = self.read_value(param1.address as u128, param1.mode);
-        self.output.push(op1);
+        self.output.push_back(op1);
 
         self.pc + self.get_increment_for_opcode(&instr.opcode)
     }
