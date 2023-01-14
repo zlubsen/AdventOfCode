@@ -23,12 +23,13 @@ fn part1() {
     let input = read_input("inputs/day14.txt");
     let reactions = parse_reactions(&input);
     // print(&reactions);
-    let cost = solve_cost("FUEL", 1, HashMap::new(), &reactions);
+    let mut inventory: HashMap<String, usize> = HashMap::new();
+    let cost = solve_cost("FUEL", 1, &mut inventory, &reactions);
     println!("{cost}");
 }
 
 fn part2() {
-    let input = read_input("inputs/day14.txt");
+    // let input = read_input("inputs/day14.txt");
 }
 
 type Recipe = Vec<Ingredient>;
@@ -63,7 +64,10 @@ impl Reaction {
 
 fn parse_reactions(input: &str) -> HashMap<String, Reaction> {
     let out = input.split('\n').collect::<Vec<&str>>().iter()
-        .map(|&line| line.split(" => ").collect::<Vec<&str>>() )
+        .map(|&line| line.trim())
+        // .inspect(|&line| println!("{line}"))
+        .filter(|&line| !line.is_empty())
+        .map(|line| line.split(" => ").collect::<Vec<&str>>() )
         .map(|reaction| {
             let ingredients = *reaction.first().unwrap();
             let recipe: Recipe = ingredients.split(", ").collect::<Vec<&str>>().iter()
@@ -87,6 +91,7 @@ fn parse_reactions(input: &str) -> HashMap<String, Reaction> {
     out
 }
 
+#[allow(dead_code)]
 fn print(map: &HashMap<String, Reaction>) {
     map.iter().for_each(|rule| {
         let reaction = rule.1.recipe.iter().map(|item| format!("{} {}",item.amount, item.chemical) ).join(", ");
@@ -94,18 +99,16 @@ fn print(map: &HashMap<String, Reaction>) {
     });
 }
 
-fn solve_cost(chemical: &str, amount: usize, mut inventory: HashMap<String, usize>, rules: &HashMap<String, Reaction>) -> usize {
+fn solve_cost(chemical: &str, amount: usize, inventory: &mut HashMap<String, usize>, rules: &HashMap<String, Reaction>) -> usize {
     if chemical == "ORE" {
         amount
     } else {
         let inventory_amount = *inventory.get(chemical).unwrap_or(&0usize);
         let needed_amount = if inventory_amount > 0 {
             inventory.entry(chemical.to_string()).and_modify(|value| {
-                *value = if amount <= inventory_amount {
-                    inventory_amount - amount
-                } else { 0 }
+                *value = inventory_amount.saturating_sub(amount);
             });
-            amount - inventory_amount
+            amount.saturating_sub(inventory_amount)
         } else { amount };
 
         if needed_amount > 0 {
@@ -119,10 +122,49 @@ fn solve_cost(chemical: &str, amount: usize, mut inventory: HashMap<String, usiz
                     .or_insert(remainder);
             }
             recipe.recipe.iter()
-                .map(|ingredient | solve_cost(&ingredient.chemical, ingredient.amount, inventory, rules) )
+                .map(|ingredient | solve_cost(&ingredient.chemical, ingredient.amount * iterations, inventory, rules) )
                 .sum()
         } else {
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use crate::{parse_reactions, solve_cost};
+
+    #[test]
+    fn test_example_1() {
+        let input = r"
+            10 ORE => 10 A
+            1 ORE => 1 B
+            7 A, 1 B => 1 C
+            7 A, 1 C => 1 D
+            7 A, 1 D => 1 E
+            7 A, 1 E => 1 FUEL
+        ";
+        let reactions = parse_reactions(input);
+        let mut inventory: HashMap<String, usize> = HashMap::new();
+        let cost = solve_cost("FUEL", 1, &mut inventory, &reactions);
+        assert_eq!(cost, 31);
+    }
+
+    #[test]
+    fn test_example_2() {
+        let input = r"
+            9 ORE => 2 A
+            8 ORE => 3 B
+            7 ORE => 5 C
+            3 A, 4 B => 1 AB
+            5 B, 7 C => 1 BC
+            4 C, 1 A => 1 CA
+            2 AB, 3 BC, 4 CA => 1 FUEL
+        ";
+        let reactions = parse_reactions(input);
+        let mut inventory: HashMap<String, usize> = HashMap::new();
+        let cost = solve_cost("FUEL", 1, &mut inventory, &reactions);
+        assert_eq!(cost, 165);
     }
 }
