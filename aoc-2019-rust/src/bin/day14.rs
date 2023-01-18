@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ops::{RangeInclusive};
 use std::time::Instant;
 use itertools::Itertools;
 use aoc_2019_rust::read_input;
@@ -22,14 +24,24 @@ fn main() {
 fn part1() {
     let input = read_input("inputs/day14.txt");
     let reactions = parse_reactions(&input);
-    // print(&reactions);
     let mut inventory: HashMap<String, usize> = HashMap::new();
     let cost = solve_cost("FUEL", 1, &mut inventory, &reactions);
     println!("{cost}");
 }
 
 fn part2() {
-    // let input = read_input("inputs/day14.txt");
+    let trillion = 1000000000000usize;
+    let input = read_input("inputs/day14.txt");
+
+    let reactions = parse_reactions(&input);
+
+    let amount = binary_search(
+        (0..=trillion),
+        |val| {
+            let mut inventory: HashMap<String, usize> = HashMap::new();
+            trillion.cmp(&solve_cost("FUEL", val, &mut inventory, &reactions))
+        });
+    println!("{amount}");
 }
 
 type Recipe = Vec<Ingredient>;
@@ -128,6 +140,21 @@ fn solve_cost(chemical: &str, amount: usize, inventory: &mut HashMap<String, usi
             0
         }
     }
+}
+
+fn binary_search<F>(range: RangeInclusive<usize>, cmp: F) -> usize
+    where F: Fn(usize) -> Ordering {
+    let mut low = *range.start();
+    let mut high = *range.end();
+    while low <= high {
+        let mid = (low + high) / 2;
+        match cmp(mid) {
+            Ordering::Less => { high = mid - 1; }
+            Ordering::Equal => { return mid }
+            Ordering::Greater => { low = mid + 1; }
+        }
+    }
+    low - 1
 }
 
 #[cfg(test)]
